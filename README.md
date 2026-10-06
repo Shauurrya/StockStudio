@@ -1,11 +1,18 @@
 # StockStudio — Interactive Inventory Sorting Lab
 
+🚀 **Live Demo on Vercel:** [https://stockstudio-seven.vercel.app](https://stockstudio-seven.vercel.app)  
+📦 **GitHub Repository:** [https://github.com/Himanshik23/StockStudio](https://github.com/Himanshik23/StockStudio)
+
 A complete working DAA prototype using **Merge Sort and Quick Sort** to organize product records by price, stock quantity, or product name.
 
-## Run it
-1. Extract the entire ZIP.
-2. Open the **StockStudio** folder.
-3. Double-click **index.html** in Chrome, Edge, or Firefox.
+## Live Access
+- **Vercel Live URL:** [https://stockstudio-seven.vercel.app](https://stockstudio-seven.vercel.app)
+- **Vercel Dashboard:** [https://vercel.com/himanshikansal80-6626s-projects](https://vercel.com/himanshikansal80-6626s-projects)
+- **GitHub Account:** [https://github.com/Himanshik23](https://github.com/Himanshik23)
+
+## Run Locally
+1. Clone the repository: `git clone https://github.com/Himanshik23/StockStudio.git`
+2. Open **index.html** directly in any modern browser (Chrome, Edge, Firefox).
 
 No installation, internet, backend, or API key is needed. Keep all four application files together. Extract first: do not open the HTML directly inside the ZIP viewer.
 
