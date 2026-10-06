@@ -1,0 +1,62 @@
+'use strict';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>'₹'+Number(n).toLocaleString('en-IN',{maximumFractionDigits:2,minimumFractionDigits:0});
+const samples={shop:[['Notebook',85,32],['Backpack',1250,8],['Water bottle',320,24],['Desk lamp',650,12],['Pen set',120,45],['Headphones',890,6],['Sticky notes',60,50],['USB drive',480,15]],reverse:[['Backpack',1250,8],['Headphones',890,6],['Desk lamp',650,12],['USB drive',480,15],['Water bottle',320,24],['Pen set',120,45],['Notebook',85,32],['Sticky notes',60,50]],ties:[['Red notebook',100,20],['Canvas pouch',250,8],['Blue notebook',100,15],['Steel bottle',250,12],['Green notebook',100,30],['Travel mug',250,5]]};
+let items=[],sample='shop',idCounter=0,field='price',direction='asc',algorithm='merge',traces={},cursor=0,timer=null,toastTimer;
+function notify(text){$('toast').textContent=text;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,2600);}
+function pause(){if(timer)clearInterval(timer);timer=null;$('play').textContent='▶ Play';}
+function persist(){try{localStorage.setItem('stockstudio-v1',JSON.stringify({items,sample,field,direction,algorithm}));}catch(e){/* Storage is optional. */}}
+function validateRecord(x){return x&&Number.isInteger(x.id)&&x.id>=0&&typeof x.name==='string'&&x.name.trim().length>0&&x.name.length<=30&&Number.isFinite(x.price)&&x.price>=0&&x.price<=99999&&Math.abs(x.price*100-Math.round(x.price*100))<0.00001&&Number.isInteger(x.stock)&&x.stock>=0&&x.stock<=9999;}
+function renderInventory(){
+ $('count').textContent=items.length+' / 24 PRODUCTS';
+ $('records').innerHTML=items.map((x,i)=>`<tr><td><input data-index="${i}" data-field="name" value="${esc(x.name)}" maxlength="30" aria-label="Product ${i+1} name" required></td><td><input data-index="${i}" data-field="price" value="${x.price}" type="number" min="0" max="99999" step="0.01" aria-label="${esc(x.name)} price" required></td><td><input data-index="${i}" data-field="stock" value="${x.stock}" type="number" min="0" max="9999" step="1" aria-label="${esc(x.name)} stock" required></td><td><button class="remove" data-remove="${i}" aria-label="Remove ${esc(x.name)}" ${items.length<=2?'disabled':''}>×</button></td></tr>`).join('');
+ document.querySelectorAll('[data-preset]').forEach(b=>b.classList.toggle('active',b.dataset.preset===sample));
+ $('total-units').textContent=items.reduce((s,x)=>s+x.stock,0).toLocaleString('en-IN');$('total-value').textContent=money(items.reduce((s,x)=>s+x.stock*x.price,0));
+}
+function prepare(){
+ pause();cursor=0;traces.merge=StockAlgorithms.traceSort(items,field,direction,'merge');traces.quick=StockAlgorithms.traceSort(items,field,direction,'quick');
+ $('order-hint').textContent=field==='price'?(direction==='asc'?'Lowest price → highest price.':'Highest price → lowest price.'):field==='stock'?(direction==='asc'?'Fewest units → most units.':'Most units → fewest units.'):(direction==='asc'?'Names A → Z (case-insensitive).':'Names Z → A (case-insensitive).');
+ $('timeline').max=traces[algorithm].events.length-1;$('move-label').textContent=algorithm==='merge'?'buffer writes':'swaps';
+ $('compare-records').innerHTML=['merge','quick'].map(a=>`<tr><td><b>${a==='merge'?'Merge Sort':'Quick Sort'}</b></td><td>${traces[a].comparisons}</td><td>${traces[a].moves} ${a==='merge'?'buffer writes':'swaps'}</td><td>${a==='merge'?'O(n log n), all cases':'O(n log n) average; O(n²) worst'}</td><td>${a==='merge'?'Original order preserved':'Original order may change'}</td></tr>`).join('');
+ renderStep();persist();
+}
+function load(name){sample=name;items=samples[name].map(([name,price,stock])=>({id:++idCounter,name,price,stock}));renderInventory();prepare();}
+const titles={info:'Ready to begin',split:'Split the current group',base:'One product: already sorted',merge:'Merge the two sorted halves',compare:'Compare the chosen field',write:'Build the merged output',merged:'Merge complete',pivot:'Choose the pivot',swap:'Update the partition boundary',partition:'Pivot in its final position',done:'Sorted. Every record preserved.'};
+function valueText(x){return field==='price'?money(x.price):field==='stock'?x.stock+' units':x.name;}
+function chips(a,output=false){return a.length?a.map(x=>`<span class="buffer-chip ${output?'output':''}">${esc(x.name)} · ${esc(valueText(x))}</span>`).join(''):'<span class="empty-buffer">Empty</span>';}
+function renderStep(){
+ const t=traces[algorithm],e=t.events[cursor],done=e.kind==='done';
+ $('timeline').value=cursor;$('step-label').textContent=`Step ${cursor} / ${t.events.length-1}`;$('status').textContent=done?'SORTED':cursor===0?'READY':'IN PROGRESS';
+ $('sim-title').textContent=(algorithm==='merge'?'Merge Sort':'Quick Sort')+' · '+(field==='stock'?'Stock quantity':field==='name'?'Product name':'Price')+' · '+direction;
+ $('view-label').textContent=field==='name'?'PRODUCT ORDER · BAR HEIGHT = ORIGINAL ALPHABETIC RANK':'PRODUCT ORDER · BAR HEIGHT = '+(field==='price'?'PRICE':'STOCK');
+ const max=Math.max(...items.map(x=>field==='name'?0:x[field]),1),names=items.slice().sort((a,b)=>a.name.toLowerCase().localeCompare(b.name.toLowerCase(),'en'));
+ $('bars').innerHTML=e.items.map((x,i)=>{const n=field==='name'?names.findIndex(y=>y.id===x.id)+1:x[field],denom=field==='name'?items.length:max;return `<div class="product-card ${e.range&&i>=e.range[0]&&i<=e.range[1]?'in-range':''} ${e.active.includes(i)?'active':''} ${e.pivot&&e.pivot.id===x.id?'pivot':''} ${done?'done':''}" title="${esc(x.name)}: ${money(x.price)}, ${x.stock} units"><span class="card-value">${field==='name'?'#'+n:esc(valueText(x))}</span><div class="card-bar" style="height:${Math.max(6,n/denom*140)}px"></div><span class="card-name">${esc(x.name)}</span><span class="card-position">POSITION ${i+1}</span></div>`;}).join('');
+ $('event-title').textContent=titles[e.kind];$('event-text').textContent=e.text;$('comparisons').textContent=e.comparisons;$('moves').textContent=e.moves;
+ $('compare-detail').innerHTML=e.compared?`<div class="comparison-detail">${esc(valueText(e.compared[0]))} <b>vs.</b> ${esc(valueText(e.compared[1]))}</div>`:e.pivot?`<div class="comparison-detail">Pivot: <b>${esc(e.pivot.name)}</b> · ${esc(valueText(e.pivot))}</div>`:'';
+ $('stage-note').textContent=algorithm==='merge'?'Writes build a temporary buffer below. The inventory row changes when the entire merged group is copied back.':'A swap exchanges whole records. Comparisons increase only when two selected field values are compared.';
+ $('buffers').hidden=!(algorithm==='merge'&&e.left);
+ $('buffers').innerHTML=algorithm==='merge'&&e.left?`<div class="buffer-title">LEFT GROUP · REMAINING PRODUCTS</div><div class="buffer-row">${chips(e.left)}</div><div class="buffer-title">RIGHT GROUP · REMAINING PRODUCTS</div><div class="buffer-row">${chips(e.right)}</div>${e.output?`<div class="buffer-title">TEMPORARY OUTPUT · IN SORTED ORDER</div><div class="buffer-row">${chips(e.output||[],true)}</div>`:''}`:'';
+ $('prev').disabled=cursor===0;$('next').disabled=done;$('play').disabled=done;$('finish').disabled=done;
+ $('result-panel').hidden=!done;
+ if(done){pause();$('result-copy').textContent=`${items.length} products sorted by ${field==='stock'?'stock quantity':field}, ${direction==='asc'?'ascending':'descending'}. This is the algorithm’s output; your editable input inventory remains available above.`;$('sorted-records').innerHTML=t.items.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.name)}</td><td>${money(x.price)}</td><td>${x.stock}</td><td>${money(x.price*x.stock)}</td></tr>`).join('');}
+}
+function next(){if(cursor<traces[algorithm].events.length-1){cursor++;renderStep();}}
+function page(name){pause();document.querySelectorAll('.page').forEach(x=>x.hidden=x.id!==name);document.querySelectorAll('[data-page]').forEach(b=>{b.classList.toggle('active',b.dataset.page===name);b.setAttribute('aria-current',b.dataset.page===name?'page':'false');});}
+$('records').addEventListener('change',e=>{const el=e.target;if(!el.dataset.field)return;const i=Number(el.dataset.index),key=el.dataset.field,candidate={...items[i],[key]:key==='name'?el.value.trim():Number(el.value)};if(el.value.trim()===''||!validateRecord(candidate)){el.value=items[i][key];notify('Use a name, a price from ₹0–99,999 (up to 2 decimals), and whole stock units 0–9,999.');return;}items[i]=candidate;renderInventory();prepare();notify('Inventory updated. Sorting starts again from your input.');});
+$('records').addEventListener('click',e=>{const b=e.target.closest('[data-remove]');if(b&&items.length>2){items.splice(Number(b.dataset.remove),1);renderInventory();prepare();}});
+$('add-form').addEventListener('submit',e=>{e.preventDefault();if(items.length>=24){notify('Maximum 24 products. Remove one to add another.');return;}const x={id:idCounter+1,name:$('new-name').value.trim(),price:Number($('new-price').value),stock:Number($('new-stock').value)};if(!validateRecord(x)){notify('Enter a valid name, price (up to 2 decimals), and whole stock quantity.');return;}idCounter++;items.push(x);$('new-name').value='';renderInventory();prepare();notify('Product added. Ready to sort.');});
+for(const id of ['field','direction'])$(id).onchange=()=>{field=$('field').value;direction=$('direction').value;prepare();};
+ document.querySelectorAll('input[name="algorithm"]').forEach(r=>r.onchange=()=>{algorithm=r.value;prepare();});
+ document.querySelectorAll('[data-preset]').forEach(b=>b.onclick=()=>{load(b.dataset.preset);notify('Sample loaded. Choose Start or Next step.');});
+$('restore').onclick=()=>{load(sample);notify('Sample restored.');};$('shuffle').onclick=()=>{for(let i=items.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[items[i],items[j]]=[items[j],items[i]];}renderInventory();prepare();notify('Inventory shuffled.');};
+$('start').onclick=()=>{prepare();$('simulator').scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});$('next').focus();notify('Ready. Next step explains one decision at a time.');};
+$('next').onclick=()=>{pause();next();};$('prev').onclick=()=>{pause();if(cursor>0){cursor--;renderStep();}};
+$('play').onclick=()=>{if(timer){pause();return;}if(cursor>=traces[algorithm].events.length-1)return;next();if(cursor<traces[algorithm].events.length-1){$('play').textContent='Ⅱ Pause';timer=setInterval(next,Number($('speed').value));}};
+$('speed').onchange=()=>{if(timer){pause();$('play').click();}};
+$('timeline').oninput=()=>{pause();cursor=Number($('timeline').value);renderStep();};$('restart').onclick=()=>{pause();cursor=0;renderStep();};$('finish').onclick=()=>{pause();cursor=traces[algorithm].events.length-1;renderStep();};
+function csvCell(v){let s=String(v);if(/^[=+@\-\t\r\n]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';}
+$('export').onclick=()=>{const rows=[['Position','Product','Price INR','Stock units','Stock value INR'],...traces[algorithm].items.map((x,i)=>[i+1,x.name,x.price.toFixed(2),x.stock,(x.price*x.stock).toFixed(2)])];const text='\uFEFF'+rows.map(row=>row.map(csvCell).join(',')).join('\r\n'),blob=new Blob([text],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='StockStudio-Sorted-Inventory.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('Sorted inventory exported as CSV.');};
+ document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>page(b.dataset.page));$('try-it').onclick=()=>page('workspace');
+let restored=false;try{const s=JSON.parse(localStorage.getItem('stockstudio-v1'));if(s&&Array.isArray(s.items)&&s.items.length>=2&&s.items.length<=24&&s.items.every(validateRecord)&&new Set(s.items.map(x=>x.id)).size===s.items.length&&Object.hasOwn(samples,s.sample)&&['price','stock','name'].includes(s.field)&&['asc','desc'].includes(s.direction)&&['merge','quick'].includes(s.algorithm)){items=s.items;sample=s.sample;field=s.field;direction=s.direction;algorithm=s.algorithm;idCounter=Math.max(...items.map(x=>x.id));$('field').value=field;$('direction').value=direction;document.querySelectorAll('input[name="algorithm"]').forEach(r=>r.checked=r.value===algorithm);renderInventory();prepare();restored=true;}}catch(e){/* Invalid or blocked storage: use default inventory. */}
+if(!restored)load('shop');
